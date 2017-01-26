@@ -56,6 +56,23 @@ static const char *describe_object(struct object *obj)
 	return buf.buf;
 }
 
+static const char *printable_type(struct object *obj)
+{
+	const char *ret;
+
+	if (obj->type == OBJ_NONE) {
+		enum object_type type = sha1_object_info(obj->oid.hash, NULL);
+		if (type > 0)
+			object_as_type(obj, type, 0);
+	}
+
+	ret = typename(obj->type);
+	if (!ret)
+		ret = "unknown";
+
+	return ret;
+}
+
 static int fsck_config(const char *var, const char *value, void *cb)
 {
 	if (strcmp(var, "fsck.skiplist") == 0) {
@@ -83,7 +100,7 @@ static void objreport(struct object *obj, const char *msg_type,
 			const char *err)
 {
 	fprintf(stderr, "%s in %s %s: %s\n",
-		msg_type, typename(obj->type), describe_object(obj), err);
+		msg_type, printable_type(obj), describe_object(obj), err);
 }
 
 static int objerror(struct object *obj, const char *err)
@@ -114,7 +131,7 @@ static int mark_object(struct object *obj, int type, void *data, struct fsck_opt
 	if (!obj) {
 		/* ... these references to parent->fld are safe here */
 		printf("broken link from %7s %s\n",
-			   typename(parent->type), describe_object(parent));
+			   printable_type(parent), describe_object(parent));
 		printf("broken link from %7s %s\n",
 			   (type == OBJ_ANY ? "unknown" : typename(type)), "unknown");
 		errors_found |= ERROR_REACHABLE;
@@ -131,9 +148,9 @@ static int mark_object(struct object *obj, int type, void *data, struct fsck_opt
 	if (!(obj->flags & HAS_OBJ)) {
 		if (parent && !has_object_file(&obj->oid)) {
 			printf("broken link from %7s %s\n",
-				 typename(parent->type), describe_object(parent));
+				 printable_type(parent), describe_object(parent));
 			printf("              to %7s %s\n",
-				 typename(obj->type), describe_object(obj));
+				 printable_type(obj), describe_object(obj));
 			errors_found |= ERROR_REACHABLE;
 		}
 		return 1;
@@ -205,7 +222,7 @@ static void check_reachable_object(struct object *obj)
 	if (!(obj->flags & HAS_OBJ)) {
 		if (has_sha1_pack(obj->oid.hash))
 			return; /* it is in pack - forget about it */
-		printf("missing %s %s\n", typename(obj->type),
+		printf("missing %s %s\n", printable_type(obj),
 			describe_object(obj));
 		errors_found |= ERROR_REACHABLE;
 		return;
@@ -231,7 +248,7 @@ static void check_unreachable_object(struct object *obj)
 	 * since this is something that is prunable.
 	 */
 	if (show_unreachable) {
-		printf("unreachable %s %s\n", typename(obj->type),
+		printf("unreachable %s %s\n", printable_type(obj),
 			describe_object(obj));
 		return;
 	}
@@ -250,7 +267,7 @@ static void check_unreachable_object(struct object *obj)
 	 */
 	if (!obj->used) {
 		if (show_dangling)
-			printf("dangling %s %s\n", typename(obj->type),
+			printf("dangling %s %s\n", printable_type(obj),
 			       describe_object(obj));
 		if (write_lost_and_found) {
 			char *filename = git_pathdup("lost-found/%s/%s",
@@ -324,7 +341,7 @@ static int fsck_obj(struct object *obj)
 
 	if (verbose)
 		fprintf(stderr, "Checking %s %s\n",
-			typename(obj->type), describe_object(obj));
+			printable_type(obj), describe_object(obj));
 
 	if (fsck_walk(obj, NULL, &fsck_obj_options))
 		objerror(obj, "broken links");
@@ -350,7 +367,7 @@ static int fsck_obj(struct object *obj)
 		struct tag *tag = (struct tag *) obj;
 
 		if (show_tags && tag->tagged) {
-			printf("tagged %s %s", typename(tag->tagged->type),
+			printf("tagged %s %s", printable_type(tag->tagged),
 				describe_object(tag->tagged));
 			printf(" (%s) in %s\n", tag->tag,
 				describe_object(&tag->object));
@@ -604,57 +621,7 @@ static int fsck_cache_tree(struct cache_tree *it)
 
 static void mark_object_for_connectivity(const unsigned char *sha1)
 {
-	struct object *obj = lookup_object(sha1);
-
-	/*
-	 * Setting the object type here isn't strictly necessary for a
-	 * connectivity check. In most cases, our walk will expect a certain
-	 * type (e.g., a tree referencing a blob) and will use lookup_blob() to
-	 * assign the type. But doing it here has two advantages:
-	 *
-	 *   1. When the fsck_walk code looks at objects that _don't_ come from
-	 *      links (e.g., the tip of a ref), it may complain about the
-	 *      "unknown object type".
-	 *
-	 *   2. This serves as a nice cross-check that the graph links are
-	 *      sane. So --connectivity-only does not check that the bits of
-	 *      blobs are not corrupted, but it _does_ check that 100644 tree
-	 *      entries point to blobs, and so forth.
-	 *
-	 * Unfortunately we can't just use parse_object() here, because the
-	 * whole point of --connectivity-only is to avoid reading the object
-	 * data more than necessary.
-	 */
-	if (!obj || obj->type == OBJ_NONE) {
-		enum object_type type = sha1_object_info(sha1, NULL);
-		switch (type) {
-		case OBJ_BAD:
-			error("%s: unable to read object type",
-			      sha1_to_hex(sha1));
-			break;
-		case OBJ_COMMIT:
-			obj = (struct object *)lookup_commit(sha1);
-			break;
-		case OBJ_TREE:
-			obj = (struct object *)lookup_tree(sha1);
-			break;
-		case OBJ_BLOB:
-			obj = (struct object *)lookup_blob(sha1);
-			break;
-		case OBJ_TAG:
-			obj = (struct object *)lookup_tag(sha1);
-			break;
-		default:
-			error("%s: unknown object type %d",
-			      sha1_to_hex(sha1), type);
-		}
-
-		if (!obj || obj->type == OBJ_NONE) {
-			errors_found |= ERROR_OBJECT;
-			return;
-		}
-	}
-
+	struct object *obj = lookup_unknown_object(sha1);
 	obj->flags |= HAS_OBJ;
 }
 
