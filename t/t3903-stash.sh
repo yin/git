@@ -802,4 +802,13 @@ test_expect_success 'create with multiple arguments for the message' '
 	test_cmp expect actual
 '
 
+test_expect_success 'new style stash create stores correct message' '
+	>foo &&
+	git add foo &&
+	STASH_ID=$(git stash create -m "create test message new style") &&
+	echo "On master: create test message new style" >expect &&
+	git show --pretty=%s -s ${STASH_ID} >actual &&
+	test_cmp expect actual
+'
+
 test_done

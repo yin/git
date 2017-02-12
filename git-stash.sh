@@ -58,8 +58,52 @@ clear_stash () {
 }
 
 create_stash () {
-	stash_msg="$1"
-	untracked="$2"
+	stash_msg=
+	untracked=
+	new_style=
+	while test $# != 0
+	do
+		case "$1" in
+		-m|--message)
+			shift
+			test -z ${1+x} && usage
+			stash_msg="$1"
+			new_style=t
+			;;
+		-u|--include-untracked)
+			shift
+			test -z ${1+x} && usage
+			untracked="$1"
+			new_style=t
+			;;
+		*)
+			if test -n "$new_style"
+			then
+				echo "invalid argument"
+				option="$1"
+				# TRANSLATORS: $option is an invalid option, like
+				# `--blah-blah'. The 7 spaces at the beginning of the
+				# second line correspond to "error: ". So you should line
+				# up the second line with however many characters the
+				# translation of "error: " takes in your language. E.g. in
+				# English this is:
+				#
+				#    $ git stash save --blah-blah 2>&1 | head -n 2
+				#    error: unknown option for 'stash save': --blah-blah
+				#           To provide a message, use git stash save -- '--blah-blah'
+				eval_gettextln "error: unknown option for 'stash create': \$option"
+				usage
+			fi
+			break
+			;;
+		esac
+		shift
+	done
+
+	if test -z "$new_style"
+	then
+		stash_msg="$*"
+	fi
 
 	git update-index -q --refresh
 	if no_changes
@@ -268,7 +312,7 @@ push_stash () {
 	git reflog exists $ref_stash ||
 		clear_stash || die "$(gettext "Cannot initialize stash")"
 
-	create_stash "$stash_msg" $untracked
+	create_stash -m "$stash_msg" -u "$untracked"
 	store_stash -m "$stash_msg" -q $w_commit ||
 	die "$(gettext "Cannot save the current status")"
 	say "$(eval_gettext "Saved working directory and index state \$stash_msg")"
@@ -667,7 +711,7 @@ clear)
 	;;
 create)
 	shift
-	create_stash "$*" && echo "$w_commit"
+	create_stash "$@" && echo "$w_commit"
 	;;
 store)
 	shift
