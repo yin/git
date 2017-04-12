@@ -3682,6 +3682,18 @@ class P4Branches(Command):
             print "%s <= %s (%s)" % (branch, ",".join(settings["depot-paths"]), settings["change"])
         return True
 
+class P4Export(Command):
+    def __init__(self):
+        Command.__init__(self)
+        self.options = [ ]
+        self.description = ("Exports git branches into dedicated lightweight "
+                            + "P4 clients")
+        self.verbose = False
+
+    def run(self, args):
+        print "Hello world!"
+        return True
+
 class HelpFormatter(optparse.IndentedHelpFormatter):
     def __init__(self):
         optparse.IndentedHelpFormatter.__init__(self)
@@ -3708,7 +3720,8 @@ commands = {
     "rebase" : P4Rebase,
     "clone" : P4Clone,
     "rollback" : P4RollBack,
-    "branches" : P4Branches
+    "branches" : P4Branches,
+    "export" : P4Export
 }
 
 
